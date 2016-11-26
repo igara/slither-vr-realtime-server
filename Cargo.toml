@@ -1,0 +1,7 @@
+[package]
+authors = ["五十嵐翔 <igara1119@gmail.com>"]
+name = "slither-vr-realtime-server"
+version = "0.1.0"
+
+[dependencies]
+websocket = "0.17.1"
