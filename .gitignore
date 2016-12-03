@@ -1,3 +1,6 @@
 .idea
 Cargo.lock
 target
+.settings
+.project
+src/tmp*
