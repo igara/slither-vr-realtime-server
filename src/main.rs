@@ -1,11 +1,15 @@
 extern crate websocket;
+extern crate crypto;
 
 use std::thread;
 use websocket::{Server, Message, Sender, Receiver};
 use websocket::message::Type;
 use websocket::header::WebSocketProtocol;
+use crypto::sha2::Sha256;
+use crypto::digest::Digest;
 
 fn main() {
+    println!("起動中...");
     let server = Server::bind("127.0.0.1:8124").unwrap();
     for connection in server {
         // Spawn a new thread for each connection.
@@ -31,10 +35,14 @@ fn main() {
                 .peer_addr()
                 .unwrap();
 
-            println!("Connection from {}", ip);
+            //println!("Connection from {}", ip);
 
-            // let message: Message = Message::text("Hello".to_string());
-            // client.send_message(&message).unwrap();
+            let mut sha256 = Sha256::new();
+            sha256.input_str(&ip.to_string());
+            let client_id = sha256.result_str();
+
+            let message: Message = Message::text(client_id);
+            client.send_message(&message).unwrap();
 
             let (mut sender, mut receiver) = client.split();
 
@@ -45,15 +53,21 @@ fn main() {
                     Type::Close => {
                         let message = Message::close();
                         sender.send_message(&message).unwrap();
-                        println!("Client {} disconnected", ip);
+                        //println!("Client {} disconnected", ip);
                         return;
                     },
-                    Type::Ping => {
+                    Type::Pong => {
                         let message = Message::pong(message.payload);
+                        //println!("{:?}", message);
+                        sender.send_message(&message).unwrap();
+                    },
+                    Type::Ping => {
+                        let message = Message::ping(message.payload);
+                        //println!("{:?}", message);
                         sender.send_message(&message).unwrap();
                     },
                     _ => {
-                        // println!("received: {:?}", &message.payload);
+                        //println!("{:?}", message);
                         sender.send_message(&message).unwrap();
                     },
                 }
