@@ -10,7 +10,7 @@ use crypto::digest::Digest;
 
 fn main() {
     println!("起動中...");
-    let server = Server::bind("127.0.0.1:8124").unwrap();
+    let server = Server::bind("0.0.0.0:8124").unwrap();
     for connection in server {
         // Spawn a new thread for each connection.
         thread::spawn(move || {
@@ -58,16 +58,16 @@ fn main() {
                     },
                     Type::Pong => {
                         let message = Message::pong(message.payload);
-                        //println!("{:?}", message);
+                        println!("{:?}", message);
                         sender.send_message(&message).unwrap();
                     },
                     Type::Ping => {
                         let message = Message::ping(message.payload);
-                        //println!("{:?}", message);
+                        println!("{:?}", message);
                         sender.send_message(&message).unwrap();
                     },
                     _ => {
-                        //println!("{:?}", message);
+                        println!("{:?}", message);
                         sender.send_message(&message).unwrap();
                     },
                 }
