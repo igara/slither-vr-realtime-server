@@ -6,7 +6,6 @@ use std::sync::{Mutex, Arc};
 use websocket::{Server, Message, Sender, Receiver};
 use websocket::message::Type;
 use websocket::header::WebSocketProtocol;
-use websocket::result::WebSocketResult;
 use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 
@@ -16,11 +15,11 @@ use crypto::digest::Digest;
 ///
 ///
 fn broadcast(senders: &mut Vec<websocket::client::Sender<websocket::WebSocketStream>>,
-             message: Message) -> WebSocketResult<()> {
+             message: Message) {
+
     for sender in senders {
-        try!(sender.send_message(&message));
+        sender.send_message(&message);
     }
-    Ok(())
 }
 
 /// Main.
@@ -32,7 +31,7 @@ fn broadcast(senders: &mut Vec<websocket::client::Sender<websocket::WebSocketStr
 ///
 fn main() {
     println!("起動中...");
-    let server = Server::bind("0.0.0.0:8124").unwrap();
+    let server: Server = Server::bind("0.0.0.0:8124").unwrap();
     let senders = Arc::new(Mutex::new(Vec::new()));
 
     for connection in server {
@@ -60,9 +59,9 @@ fn main() {
                 .peer_addr()
                 .unwrap();
 
-            //println!("Connection from {}", ip);
+            println!("Connection from {}", ip);
 
-            let mut sha256 = Sha256::new();
+            let mut sha256:Sha256 = Sha256::new();
             sha256.input_str(&ip.to_string());
             let client_id = sha256.result_str();
 
@@ -73,24 +72,28 @@ fn main() {
             senders.lock().unwrap().push(sender);
 
             for message in receiver.incoming_messages() {
-                let message: Message = message.unwrap();
 
-                match message.opcode {
-                    Type::Close => {
-//                        println!("Client {} disconnected", ip);
-                    },
-                    Type::Binary => {
+                if let Err(e) = message {
+                    // コネクションが切れてメッセージ送れない時など
+                    println!("Exception: {}", e);
 
-                    },
-                    Type::Ping => {
 
-                    },
-                    Type::Pong => {
+                } else {
+                    let message: Message = message.unwrap();
 
-                    },
-                    Type::Text => {
-                        let result:WebSocketResult<()> = broadcast(&mut *senders.lock().unwrap(), message);
-                        println!("{:?}", &result);
+
+                    match message.opcode {
+                        Type::Close => {
+                            // クライアント側からコネクション切断された時
+                            //senders.lock().unwrap().remove(sender);
+                            println!("Client {} disconnected", ip);
+                        },
+                        Type::Binary => {},
+                        Type::Ping => {},
+                        Type::Pong => {},
+                        Type::Text => {
+                            broadcast(&mut *senders.lock().unwrap(), message);
+                        }
                     }
                 }
             }
