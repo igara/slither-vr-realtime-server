@@ -1,102 +1,130 @@
-extern crate websocket;
+/// WebSocket server using trait objects to route
+/// to an infinitely extensible number of handlers
+extern crate ws;
+extern crate env_logger;
 extern crate crypto;
 
-use std::thread;
-use std::sync::{Mutex, Arc};
-use websocket::{Server, Message, Sender, Receiver};
-use websocket::message::Type;
-use websocket::header::WebSocketProtocol;
 use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 
-/// Broadcast.
-///
-///
-///
-///
-fn broadcast(senders: &mut Vec<websocket::client::Sender<websocket::WebSocketStream>>,
-             message: Message) {
+/// Route Struct
+struct Router {
+    sender: ws::Sender,
+    inner: Box<ws::Handler>,
+}
 
-    for sender in senders {
-        sender.send_message(&message);
+/// Routeのイベントハンドラ
+impl ws::Handler for Router {
+    /// On Request
+    fn on_request(&mut self, req: &ws::Request) -> ws::Result<(ws::Response)> {
+        let out: ws::Sender = self.sender.clone();
+
+        match req.resource() {
+            // Routing Config
+            "/" => {
+                self.inner = Box::new (
+                    Echo {
+                        ws: out 
+                    }
+                );
+            },
+
+            // Not Found時
+            _ => (),
+        }
+
+        // Delegate to the child handler
+        self.inner.on_request(req)
+    }
+
+    /// On ShutDown
+    fn on_shutdown(&mut self) {
+        self.inner.on_shutdown()
+    }
+
+    /// On Open
+    fn on_open(&mut self, shake: ws::Handshake) -> ws::Result<()> {
+        self.inner.on_open(shake)
+    }
+
+    /// On Message
+    fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
+        self.inner.on_message(msg)
+    }
+
+    /// On Close
+    fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
+        self.inner.on_close(code, reason)
+    }
+
+    /// On Error
+    fn on_error(&mut self, err: ws::Error) {
+        self.inner.on_error(err)
     }
 }
 
-/// Main.
-///
-/// ```
-///
-/// ```
-///
-///
-fn main() {
-    println!("起動中...");
-    let server: Server = Server::bind("0.0.0.0:8124").unwrap();
-    let senders = Arc::new(Mutex::new(Vec::new()));
+/// This handler returns a 404 response to all handshake requests
+struct NotFound;
 
-    for connection in server {
-        let senders = senders.clone();
-        // Spawn a new thread for each connection.
-        thread::spawn(move || {
-            let request = connection.unwrap().read_request().unwrap(); // Get the request
-            let headers = request.headers.clone(); // Keep the headers so we can check them
 
-            request.validate().unwrap(); // Validate the request
+/// Not Found 時のイベントハンドラ
+impl ws::Handler for NotFound {
 
-            let mut response = request.accept(); // Form a response
+    /// On Request
+    fn on_request(&mut self, req: &ws::Request) -> ws::Result<(ws::Response)> {
+        let mut res = try!(ws::Response::from_request(req));
+        res.set_status(404);
+        res.set_reason("Not Found");
+        Ok(res)
+    }
+}
 
-            if let Some(&WebSocketProtocol(ref protocols)) = headers.get() {
-                if protocols.contains(&("rust-websocket".to_string())) {
-                    // We have a protocol we want to use
-                    response.headers.set(WebSocketProtocol(vec!["rust-websocket".to_string()]));
-                }
-            }
 
-            let mut client = response.send().unwrap(); // Send the response
+/// This handler simply echoes all messages back to the client
+struct Echo {
+    ws: ws::Sender,
+}
 
-            let ip = client.get_mut_sender()
-                .get_mut()
-                .peer_addr()
-                .unwrap();
-
-            println!("Connection from {}", ip);
-
-            let mut sha256:Sha256 = Sha256::new();
-            sha256.input_str(&ip.to_string());
+/// Sub Handler
+impl ws::Handler for Echo {
+    /// On Open
+    fn on_open(&mut self, shake: ws::Handshake) -> ws::Result<()> {
+        if let Some(addr) = try!(shake.remote_addr()) {
+            let mut sha256: Sha256 = Sha256::new();
+            sha256.input_str(&addr.to_string());
             let client_id = sha256.result_str();
 
-            let message: Message = Message::text(client_id);
-            client.send_message(&message).unwrap();
+            println!("client_ip:{}", addr);
+            println!("client_id:{}", client_id);
+            let _ = self.ws.send(client_id);
+        }
+        Ok(())
+    }
 
-            let (sender, mut receiver) = client.split();
-            senders.lock().unwrap().push(sender);
+    /// On Message
+    fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
+        //println!("client_send_json", msg);
+        self.ws.broadcast(msg)
+    }
 
-            for message in receiver.incoming_messages() {
+}
 
-                if let Err(e) = message {
-                    // コネクションが切れてメッセージ送れない時など
-                    println!("Exception: {}", e);
+/// Main
+fn main () {
 
+    println!("起動中...");
+    env_logger::init().unwrap();
 
-                } else {
-                    let message: Message = message.unwrap();
-
-
-                    match message.opcode {
-                        Type::Close => {
-                            // クライアント側からコネクション切断された時
-                            //senders.lock().unwrap().remove(sender);
-                            println!("Client {} disconnected", ip);
-                        },
-                        Type::Binary => {},
-                        Type::Ping => {},
-                        Type::Pong => {},
-                        Type::Text => {
-                            broadcast(&mut *senders.lock().unwrap(), message);
-                        }
-                    }
-                }
-            }
-        });
+    if let Err(error) = ws::listen("0.0.0.0:8124", |out: ws::Sender| {
+        // 通信できるとき
+        Router {
+            // Routeの設定にあるURLのとき
+            sender: out,
+            // Routeの設定にないURLのとき
+            inner: Box::new(NotFound),
+        }
+    }) {
+        // 通信失敗時
+        println!("Failed to create WebSocket due to {:?}", error);
     }
 }
