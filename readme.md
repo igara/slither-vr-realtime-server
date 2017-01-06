@@ -11,3 +11,11 @@ cd slither-vr-realtime-server
 cargo run
 
 ```
+
+## 使用しているライブラリ
+
+- [ws](https://github.com/housleyjk/ws-rs)  
+RustのWebSocketServerライブラリ
+
+- [crypto](https://github.com/DaGenix/rust-crypto)  
+Rustの暗号化ライブラリ
