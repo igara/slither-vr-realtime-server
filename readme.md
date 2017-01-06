@@ -1,6 +1,6 @@
 # slither-vr-realtime-server
 
-こちらはslither-vrのwebsocketサーバRust版である
+こちらは[slither-vr](https://github.com/igara/slither-vr)のwebsocketサーバRust版である
 
 ## 使い方
 
